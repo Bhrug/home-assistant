@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hearth
 
-## Getting Started
+Hearth is a personal, room-first home dashboard for one household. It uses Home Assistant as the automation and device core while providing a calmer experience tailored to each family member.
 
-First, run the development server:
+See [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) for the current status, architectural decisions and phased roadmap.
+
+The current vertical slice is intentionally backed by a mock Home Assistant adapter. It demonstrates:
+
+- Profiles for You, Lops, Anni and Yuvi
+- A personalised, room-first dashboard for Yuvi
+- Interactive Alexa, Sonos and thermostat controls
+- Personal routines
+- Navigation to shared household rooms
+- Responsive desktop and mobile layouts
+- A typed adapter boundary for the future Home Assistant WebSocket connection
+
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+Custom Next.js UI
+      |
+HomeAssistantAdapter
+      |-- MockHomeAssistantAdapter (current)
+      `-- WebSocketHomeAssistantAdapter (next)
+      |
+Home Assistant Core
+```
 
-## Learn More
+Home Assistant will remain responsible for authentication, permissions, areas, devices, entities, state and service calls. Hearth will own household profiles, primary rooms, favourites, dashboard composition and presentation preferences.
 
-To learn more about Next.js, take a look at the following resources:
+## Next milestone
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Replace the mock adapter with an authenticated Home Assistant WebSocket adapter while preserving the existing UI contract. Actions must execute using each member's Home Assistant identity rather than a shared administrator token.
