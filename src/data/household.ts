@@ -46,3 +46,16 @@ export const routines = [
   { id: "relax", name: "Relax", detail: "Warm lights · Favourite playlist", icon: "headphones" as const },
   { id: "bedtime", name: "Bedtime", detail: "Everything off · Heating 18°", icon: "moon" as const },
 ];
+
+const sharedAreaIds = ["living-room", "kitchen"];
+
+// Children can see/control their own room plus shared household areas.
+// Adults and the owner can reach every area. This is enforced server-side
+// (see src/app/api/voice/route.ts) so a person can never ask their way
+// around it via conversation.
+export function allowedAreaIdsFor(member: HouseholdMember): string[] {
+  if (member.role === "child") {
+    return [member.primaryArea, ...sharedAreaIds];
+  }
+  return areas.map((area) => area.id);
+}

@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { areas, members, routines, type MemberId } from "@/data/household";
 import { MockHomeAssistantAdapter } from "@/lib/home-assistant/mock";
 import type { HomeEntity } from "@/lib/home-assistant/types";
 
-type IconName = "home" | "grid" | "sparkles" | "headphones" | "moon" | "settings" | "bed" | "sofa" | "utensils" | "speaker" | "thermometer" | "play" | "pause" | "minus" | "plus" | "chevron" | "bell" | "sun" | "lock" | "leaf" | "more" | "volume" | "shield";
+type IconName = "home" | "grid" | "sparkles" | "headphones" | "moon" | "settings" | "bed" | "sofa" | "utensils" | "speaker" | "thermometer" | "play" | "pause" | "minus" | "plus" | "chevron" | "bell" | "sun" | "lock" | "leaf" | "more" | "volume" | "shield" | "mic";
+
+type VoiceAction =
+  | { type: "control"; entityId: string; state: string; attributes?: HomeEntity["attributes"] }
+  | { type: "routine"; routineId: string };
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5M9 20v-6h6v6"/></>,
@@ -28,6 +32,7 @@ const paths: Record<IconName, React.ReactNode> = {
   more: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
   volume: <><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/></>,
   shield: <path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10Z"/>,
+  mic: <><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M6 11a6 6 0 0 0 12 0M12 19v3"/></>,
 };
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -106,6 +111,8 @@ export function HomeDashboard() {
   const [activeNav, setActiveNav] = useState("home");
   const [toast, setToast] = useState("");
   const [routineRunning, setRoutineRunning] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const memberId = session ?? "yuvi";
   const member = members.find((item) => item.id === memberId) ?? members[0];
 
@@ -193,6 +200,66 @@ export function HomeDashboard() {
     }
   };
 
+  const applyVoiceActions = (actions: VoiceAction[]) => {
+    for (const action of actions) {
+      if (action.type === "control") {
+        void adapter.setState(action.entityId, action.state, action.attributes);
+      } else {
+        const routine = routines.find((item) => item.id === action.routineId);
+        runRoutine(action.routineId, routine?.name ?? action.routineId);
+      }
+    }
+  };
+
+  const handleVoiceTranscript = async (transcript: string) => {
+    setToast(`Heard: "${transcript}"`);
+    try {
+      const response = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript, memberId: member.id, entities }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setToast(data.error ?? "Hearth's voice assistant is unavailable right now.");
+        return;
+      }
+      applyVoiceActions(data.actions ?? []);
+      setToast(data.reply);
+      if ("speechSynthesis" in window && data.reply) {
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(data.reply));
+      }
+    } catch {
+      setToast("Couldn't reach Hearth's voice assistant.");
+    }
+  };
+
+  const toggleListening = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setToast("Voice control needs a browser like Chrome that supports speech recognition.");
+      return;
+    }
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[event.results.length - 1]?.[0]?.transcript;
+      if (transcript) void handleVoiceTranscript(transcript);
+    };
+    recognition.onerror = () => setToast("Didn't catch that — try again.");
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+    setToast("Listening…");
+  };
+
   return (
     <div className="appShell" style={{ "--member-accent": member.accent } as React.CSSProperties}>
       <aside className="sidebar">
@@ -219,7 +286,7 @@ export function HomeDashboard() {
         <header className="topbar">
           <div className="mobileBrand"><span className="brandMark"><Icon name="home" size={17}/></span><span>hearth</span></div>
           <div className="statusPill"><span className="statusDot"/> All good at home</div>
-          <div className="topActions"><button className="iconButton" aria-label="Notifications" onClick={() => setToast("No new notifications")}><Icon name="bell"/></button><button className={`headerAvatar ${member.avatarClass}`} onClick={() => setToast(`${member.name} is signed in`)}>{member.initials}</button></div>
+          <div className="topActions"><button className={`iconButton ${listening ? "listening" : ""}`} aria-label={listening ? "Stop listening" : "Talk to Hearth"} onClick={toggleListening}><Icon name="mic"/></button><button className="iconButton" aria-label="Notifications" onClick={() => setToast("No new notifications")}><Icon name="bell"/></button><button className={`headerAvatar ${member.avatarClass}`} onClick={() => setToast(`${member.name} is signed in`)}>{member.initials}</button></div>
         </header>
 
         <div className="contentWrap">
