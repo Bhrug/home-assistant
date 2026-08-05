@@ -1,5 +1,5 @@
-import { HomeDashboard } from "@/components/home-dashboard";
+import { HearthApp } from "@/components/hearth-app";
 
 export default function Home() {
-  return <HomeDashboard />;
+  return <HearthApp />;
 }
