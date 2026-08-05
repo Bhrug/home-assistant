@@ -36,12 +36,77 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 
 const adapter = new MockHomeAssistantAdapter();
 
+function PinLock({
+  pendingMember,
+  pin,
+  error,
+  onChoose,
+  onDigit,
+  onBackspace,
+  onBack,
+}: {
+  pendingMember: MemberId | null;
+  pin: string;
+  error: boolean;
+  onChoose: (id: MemberId) => void;
+  onDigit: (digit: string) => void;
+  onBackspace: () => void;
+  onBack: () => void;
+}) {
+  const person = members.find((item) => item.id === pendingMember);
+
+  return (
+    <div className="lockScreen">
+      <div className="lockCard" style={person ? ({ "--member-accent": person.accent } as React.CSSProperties) : undefined}>
+        <div className="brand lockBrand"><span className="brandMark"><Icon name="home" size={19}/></span><span>hearth</span></div>
+        {!person ? (
+          <>
+            <h1>Who&rsquo;s home?</h1>
+            <p>Choose your profile to unlock your space.</p>
+            <div className="lockAvatarGrid">
+              {members.map((item) => (
+                <button key={item.id} className="lockAvatarButton" onClick={() => onChoose(item.id)}>
+                  <span className={`profileAvatar ${item.avatarClass}`}>{item.initials}</span>
+                  <span>{item.name}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <button className="textButton lockBack" onClick={onBack}><Icon name="chevron" size={16}/> Back</button>
+            <span className={`profileAvatar lockPersonAvatar ${person.avatarClass}`}>{person.initials}</span>
+            <h1>Hi {person.name}</h1>
+            <p>Enter your 4-digit PIN.</p>
+            <div className={`pinDots ${error ? "pinError" : ""}`}>
+              {[0, 1, 2, 3].map((slot) => <span key={slot} className={slot < pin.length ? "filled" : ""} />)}
+            </div>
+            <div className="keypad">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"].map((key, index) =>
+                key === "" ? <span key={index} /> : (
+                  <button key={index} className="keypadButton" aria-label={key === "back" ? "Backspace" : key} onClick={() => key === "back" ? onBackspace() : onDigit(key)}>
+                    {key === "back" ? <Icon name="minus" size={18}/> : key}
+                  </button>
+                )
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HomeDashboard() {
-  const [memberId, setMemberId] = useState<MemberId>("yuvi");
+  const [session, setSession] = useState<MemberId | null>(null);
+  const [pendingMember, setPendingMember] = useState<MemberId | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
   const [entities, setEntities] = useState<HomeEntity[]>([]);
   const [activeNav, setActiveNav] = useState("home");
   const [toast, setToast] = useState("");
   const [routineRunning, setRoutineRunning] = useState<string | null>(null);
+  const memberId = session ?? "yuvi";
   const member = members.find((item) => item.id === memberId) ?? members[0];
 
   useEffect(() => adapter.subscribe(setEntities), []);
@@ -51,8 +116,58 @@ export function HomeDashboard() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const primaryArea = areas.find((area) => area.id === member.primaryArea);
+  const choosePendingMember = (id: MemberId) => {
+    setPendingMember(id);
+    setPin("");
+    setPinError(false);
+  };
+
+  const enterDigit = (digit: string) => {
+    if (pin.length >= 4) return;
+    const next = pin + digit;
+    setPin(next);
+    if (next.length === 4 && pendingMember) {
+      const person = members.find((item) => item.id === pendingMember);
+      if (person && person.pin === next) {
+        setSession(pendingMember);
+        setPendingMember(null);
+        setPin("");
+        setPinError(false);
+        setToast(`Welcome, ${person.name}`);
+      } else {
+        setPinError(true);
+        window.setTimeout(() => {
+          setPin("");
+          setPinError(false);
+        }, 500);
+      }
+    }
+  };
+
+  const lock = () => {
+    setSession(null);
+    setPendingMember(null);
+    setPin("");
+    setToast("Locked");
+  };
+
   const roomEntities = useMemo(() => entities.filter((entity) => entity.areaId === "yuvi-bedroom"), [entities]);
+
+  if (!session) {
+    return (
+      <PinLock
+        pendingMember={pendingMember}
+        pin={pin}
+        error={pinError}
+        onChoose={choosePendingMember}
+        onDigit={enterDigit}
+        onBackspace={() => setPin((current) => current.slice(0, -1))}
+        onBack={() => { setPendingMember(null); setPin(""); setPinError(false); }}
+      />
+    );
+  }
+
+  const primaryArea = areas.find((area) => area.id === member.primaryArea);
   const alexa = roomEntities.find((entity) => entity.entityId.includes("echo"));
   const sonos = roomEntities.find((entity) => entity.entityId.includes("sonos"));
   const heating = roomEntities.find((entity) => entity.domain === "climate");
@@ -63,9 +178,9 @@ export function HomeDashboard() {
   };
 
   const selectMember = (id: MemberId) => {
-    setMemberId(id);
-    const next = members.find((item) => item.id === id);
-    setToast(`Switched to ${next?.name}’s home`);
+    if (id === memberId) return;
+    setSession(null);
+    choosePendingMember(id);
   };
 
   const runRoutine = (id: string, name: string) => {
@@ -94,8 +209,8 @@ export function HomeDashboard() {
           <div className="familyStack">
             {members.map((person) => <button key={person.id} aria-label={`Switch to ${person.name}`} title={person.name} onClick={() => selectMember(person.id)} className={`miniAvatar ${person.avatarClass} ${person.id === memberId ? "selected" : ""}`}>{person.initials}</button>)}
           </div>
-          <button className="profileButton" onClick={() => setToast("Profile settings coming next")}>
-            <span className={`profileAvatar ${member.avatarClass}`}>{member.initials}</span><span><strong>{member.name}</strong><small>{member.role === "child" ? "Family member" : "Home admin"}</small></span><Icon name="more"/>
+          <button className="profileButton" aria-label="Lock and switch profile" onClick={lock}>
+            <span className={`profileAvatar ${member.avatarClass}`}>{member.initials}</span><span><strong>{member.name}</strong><small>{member.role === "child" ? "Family member" : "Home admin"}</small></span><Icon name="lock"/>
           </button>
         </div>
       </aside>

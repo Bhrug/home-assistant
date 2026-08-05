@@ -46,5 +46,25 @@ button:focus-visible { outline: 3px solid color-mix(in srgb, var(--member-accent
 .toast { position: fixed; right: 28px; bottom: 28px; z-index: 50; padding: 13px 17px; border: 1px solid var(--line); border-radius: 12px; background: #29272f; color: white; box-shadow: 0 14px 40px rgba(0,0,0,.2); display: flex; align-items: center; gap: 10px; font-size: 12px; animation: toastIn .25s ease-out; }.mobileNav { display: none; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
 
+.lockScreen { min-height: 100vh; display: grid; place-items: center; background: var(--paper); padding: 24px; }
+.lockCard { width: min(360px, 100%); padding: 38px 32px; border: 1px solid var(--line); border-radius: 22px; background: rgba(255,255,255,.9); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; position: relative; }
+.lockBrand { padding: 0 0 22px; }
+.lockCard h1 { margin: 6px 0 0; font: 500 26px Georgia, serif; letter-spacing: -.4px; }
+.lockCard > p { margin: 6px 0 22px; color: var(--muted); font-size: 13px; }
+.lockAvatarGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; width: 100%; }
+.lockAvatarButton { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 16px 8px; border: 1px solid var(--line); border-radius: 16px; background: white; cursor: pointer; font-size: 12px; font-weight: 700; transition: transform .15s, box-shadow .15s; }
+.lockAvatarButton:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.lockAvatarButton .profileAvatar { width: 46px; height: 46px; font-size: 15px; }
+.lockBack { align-self: flex-start; margin-bottom: 6px; }
+.lockPersonAvatar { width: 54px; height: 54px; font-size: 17px; margin-bottom: 4px; }
+.pinDots { display: flex; gap: 14px; margin-bottom: 26px; }
+.pinDots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); background: transparent; transition: background .15s, border-color .15s; }
+.pinDots span.filled { background: var(--member-accent, var(--purple)); border-color: var(--member-accent, var(--purple)); }
+.pinDots.pinError span { border-color: #d9534f; }
+.pinDots.pinError span.filled { background: #d9534f; border-color: #d9534f; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; }
+.keypadButton { height: 58px; border: 1px solid var(--line); border-radius: 15px; background: white; font: 500 19px Georgia, serif; color: var(--ink); cursor: pointer; display: grid; place-items: center; transition: background .15s; }
+.keypadButton:hover { background: #f5f3ef; }
+
 @media (max-width: 920px) { .sidebar { width: 180px; padding-inline: 14px; }.mainContent { width: calc(100% - 180px); margin-left: 180px; }.contentWrap { width: calc(100% - 7vw); }.deviceGrid { grid-template-columns: 1fr 1fr; }.heatingCard { grid-column: 1 / -1; min-height: 190px; }.twoColumnSection { gap: 22px; } }
 @media (max-width: 720px) { .sidebar { display: none; }.mainContent { width: 100%; margin: 0; padding-bottom: 75px; }.topbar { height: 64px; padding: 0 18px; }.mobileBrand { display: flex; font-size: 19px; }.mobileBrand .brandMark { width: 31px; height: 31px; }.statusPill { display: none; }.contentWrap { width: calc(100% - 32px); padding: 35px 0 20px; }.welcomeRow { margin-bottom: 38px; align-items: flex-start; }.weather { padding: 8px; }.weather > div { display: none; }.welcomeRow h1 { font-size: 36px; }.welcomeRow > div > p:last-child { font-size: 14px; }.deviceGrid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 2px 15px; margin: 0 -2px; }.deviceCard { min-width: 82vw; scroll-snap-align: start; }.heatingCard { min-height: 238px; }.twoColumnSection { grid-template-columns: 1fr; gap: 0; }.homeFooter { flex-direction: column; gap: 10px; }.mobileNav { position: fixed; inset: auto 0 0; z-index: 30; height: 69px; padding: 8px 12px 9px; border-top: 1px solid var(--line); background: rgba(255,255,255,.94); backdrop-filter: blur(16px); display: grid; grid-template-columns: repeat(4,1fr); }.mobileNav button { border: 0; background: transparent; color: #8d8992; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 8px; cursor: pointer; }.mobileNav button.active { color: var(--member-accent, var(--purple)); font-weight: 800; }.toast { right: 16px; left: 16px; bottom: 82px; justify-content: center; }.emptyPersonalCard { grid-template-columns: auto 1fr; }.emptyPersonalCard button { grid-column: 1/-1; } }
