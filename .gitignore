@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local Home Assistant OAuth tokens / room mappings
+/.data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

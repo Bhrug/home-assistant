@@ -52,10 +52,41 @@ const sharedAreaIds = ["living-room", "kitchen"];
 // Children can see/control their own room plus shared household areas.
 // Adults and the owner can reach every area. This is enforced server-side
 // (see src/app/api/voice/route.ts) so a person can never ask their way
-// around it via conversation.
+// around it via conversation. Mock-mode only: these are the mock adapter's
+// own literal area ids, which never exist in a real Home Assistant instance.
 export function allowedAreaIdsFor(member: HouseholdMember): string[] {
   if (member.role === "child") {
     return [member.primaryArea, ...sharedAreaIds];
   }
   return areas.map((area) => area.id);
+}
+
+// Live-mode equivalent of allowedAreaIdsFor, used once a member is connected
+// to a real Home Assistant instance. Real area ids are discovered from HA
+// itself (see src/lib/home-assistant/connections.ts's getLiveAreas) rather
+// than the mock literals above, and each member's primary room is whatever
+// they picked in the room-mapping picker (src/app/api/home-assistant/room-mapping).
+//
+// Adults/owner: null means unrestricted — each person now authenticates
+// with their own Home Assistant user, so HA's own per-user permissions are
+// the real security boundary, not this allow-list.
+//
+// Child: their mapped primary room, plus every live area nobody else has
+// claimed as their primary room (a zero-config stand-in for "shared areas"
+// since a fresh Home Assistant instance has no equivalent of sharedAreaIds).
+export function allowedLiveAreaIdsFor(
+  member: HouseholdMember,
+  liveAreaIds: string[],
+  roomMapping: Partial<Record<MemberId, string>>
+): string[] | null {
+  if (member.role !== "child") return null;
+
+  const mappedPrimaryAreaId = roomMapping[member.id] ?? null;
+  const claimedByOthers = new Set(
+    Object.entries(roomMapping)
+      .filter(([id]) => id !== member.id)
+      .map(([, areaId]) => areaId)
+  );
+  const areaIds = liveAreaIds.filter((areaId) => !claimedByOthers.has(areaId));
+  return mappedPrimaryAreaId && !areaIds.includes(mappedPrimaryAreaId) ? [...areaIds, mappedPrimaryAreaId] : areaIds;
 }

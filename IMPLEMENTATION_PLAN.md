@@ -1,8 +1,8 @@
 # Hearth implementation plan
 
-**Status date:** 19 June 2026  
+**Status date:** 13 August 2026  
 **Project location:** `C:\Users\bhrug\code\home-assistant`  
-**Current phase:** Prototype vertical slice complete; awaiting Home Assistant installation
+**Current phase:** Live Home Assistant connection working for one household member (Bhrug); remaining members still need to connect their own Home Assistant accounts
 
 ## Product vision
 
@@ -27,8 +27,8 @@ Hearth Next.js UI
 Household profiles and presentation preferences
       |
 HomeAssistantAdapter
-      |-- MockHomeAssistantAdapter (implemented)
-      `-- WebSocketHomeAssistantAdapter (next)
+      |-- MockHomeAssistantAdapter (implemented, default until a member connects)
+      `-- LiveHomeAssistantAdapter (implemented, per-member OAuth + WebSocket)
       |
 Home Assistant Core
       |
@@ -89,44 +89,45 @@ The first interactive vertical slice is complete.
 
 ### Integration boundary
 
-- Typed `HomeAssistantAdapter` interface
-- Working in-memory `MockHomeAssistantAdapter`
-- Mock entities use Home Assistant-style entity, device and area identifiers
-- Live subscription contract already used by the UI
-- UI is isolated from the future WebSocket implementation
+- Typed `HomeAssistantAdapter` interface, unchanged by the live work below
+- Working in-memory `MockHomeAssistantAdapter` — still the default for any member who hasn't connected
+- `LiveHomeAssistantAdapter` (`src/lib/home-assistant/live-adapter.ts`) — fetch + Server-Sent Events against Hearth's own API, satisfying the same interface
+- Per-member automatic selection: `home-dashboard.tsx` checks `/api/home-assistant/status` on sign-in and picks mock or live accordingly — no global switch, each person can be connected independently
+
+### Live Home Assistant connection (new)
+
+Each household member authenticates to Home Assistant with **their own HA user account** via OAuth (same-origin client id, no app registration needed) — Hearth never sees their HA password, they enter it on Home Assistant's own login page. Tokens are stored server-side per member in gitignored `.data/home-assistant-state.json` and refreshed automatically.
+
+- `src/lib/home-assistant/oauth.ts` / `pending-auth.ts` / `store.ts` — the OAuth authorize/callback flow and token persistence
+- `src/lib/home-assistant/connections.ts` — one live `home-assistant-js-websocket` connection per member (cached across Fast Refresh), entity/device/area registry resolution, and domain-specific service-call translation (media_player, climate, light, switch, lock, cover)
+- `src/lib/home-assistant/scope.ts` + `allowedLiveAreaIdsFor` (`src/data/household.ts`) — server-side scoping before any live data reaches the browser. **Adults/owner are unfiltered** — each person's own Home Assistant permissions (set up by Bhrug per-user in HA) are the real boundary now, not this allow-list. **Children** are scoped to their mapped room plus any live area nobody else has claimed as their primary room.
+- Routes under `src/app/api/home-assistant/`: `auth/start`, `auth/callback`, `status`, `entities`, `service-call`, `stream` (SSE), `room-mapping`
+- Room mapping: since a member's static `primaryArea` id (e.g. `"yuvi-bedroom"`) never matches a real HA area id, first-time-connected members pick their real room from a live area list (`RoomPicker` in `home-dashboard.tsx`); the choice is persisted per member
+- Generic device grid: any connected member now sees real, controllable devices in their mapped room (not just Yuvi) — `GenericDeviceGrid` in `home-dashboard.tsx`, rendered for `media_player`/`climate`/`light`/`switch`/`lock`/`cover` domains
+- **Verified live against Bhrug's real instance**: OAuth round-trip, 93 real entities returned (including the always-present `sun.sun`/`person.*`/`zone.home`), room mapping saved and reflected in the UI, a real Sonos `switch` service call executed successfully, SSE push confirmed, and tokens survive a dev-server restart with no re-auth
 
 ## Verification status
 
 - `npm run lint` — passing
 - `npm run build` — passing
 - `http://localhost:3100` — serving successfully with HTTP 200
-- Visual review — completed by Bhrug in the in-app browser
-- Automated browser inspection — unavailable because the browser runtime is blocked by the Windows sandbox; this does not affect the application itself
+- Live Home Assistant connection — verified end-to-end for Bhrug's account against the real instance (see above)
+- Automated browser inspection — the in-app Browser pane cannot reach the Home Assistant instance directly (it blocks navigation to local-network/mDNS hosts as a safety measure), so the OAuth login step itself was completed manually by Bhrug; everything else was verified via the Browser pane and direct API calls
 
 ## Current assumptions
 
-- The final Home Assistant URL is not yet available.
-- Home Assistant is not yet installed or configured for this project.
-- Current devices and areas are simulated.
-- Device names and room assignments will be confirmed after Home Assistant discovery.
+- Home Assistant is installed and reachable at `192.168.106.128:80` (`HOME_ASSISTANT_URL` in `.env.local`) — the `.local` mDNS hostname resolves fine in browsers but not from Node's server-side `fetch`, so the IP is used instead.
+- Only Bhrug has connected his Home Assistant account so far. Lops, Anni and Yuvi each have their own HA user (per Bhrug) but haven't gone through the connect flow yet.
+- Areas and devices in Home Assistant are real, but sparsely populated — most entities currently have no assigned area (`areaId: "unassigned"`), and several media_player/switch entities report `unavailable` (device online status, not a Hearth issue).
 - Hearth is a provisional product name and can be changed without affecting the architecture.
 
-## Next milestone: real Home Assistant connection
+## Next milestone: connect the rest of the household
 
-This milestone begins when Bhrug provides the Home Assistant base URL. No password, access token or other credential should be placed in chat or committed to the repository.
-
-### Work package
-
-1. Install Home Assistant's supported JavaScript WebSocket client.
-2. Add Home Assistant OAuth authorisation and token refresh.
-3. Implement `WebSocketHomeAssistantAdapter` behind the existing interface.
-4. Subscribe to live state, entity, device and area updates.
-5. Add an environment-based switch between mock and connected modes.
-6. Create an onboarding screen for mapping people to primary areas.
-7. Map discovered devices to friendly Hearth capabilities.
-8. Replace Yuvi's simulated Alexa, Sonos and thermostat entities with real registry IDs.
-9. Validate child and adult permissions using separate Home Assistant users.
-10. Retain mock mode for development, automated tests and demonstrations.
+1. Have Lops, Anni and Yuvi each sign in to Hearth and complete their own "Connect Home Assistant" OAuth flow.
+2. For each, pick their room via the `RoomPicker` and confirm `allowedLiveAreaIdsFor` scopes children correctly once more than one person has a room mapped.
+3. Once Yuvi is connected, decide whether to keep his bespoke Alexa/Sonos/thermostat cards (they only render when his real entity ids happen to match the `echo`/`sonos` naming heuristic) or retire them in favour of the generic device grid.
+4. Confirm HA's own per-user permissions actually restrict what a non-admin user's WebSocket connection can see/control (this was flagged as an open question during design — worth confirming empirically now that non-admin accounts exist).
+5. Address the pre-existing `npm audit` findings in transitive deps (Next.js, postcss, sharp) — unrelated to this work, not yet triaged.
 
 ### Acceptance test
 
@@ -162,7 +163,7 @@ Yuvi signs in with his own identity, immediately sees his room, observes live st
 
 ## Resume point
 
-When Home Assistant is installed, resume with:
+The Home Assistant OAuth + WebSocket connection is implemented and verified for one member. Resume with:
 
-> Connect Hearth to the Home Assistant instance using OAuth and the WebSocket API, preserving mock mode and the existing `HomeAssistantAdapter` contract.
+> Have Lops, Anni and Yuvi each connect their own Home Assistant account through Hearth's existing "Connect Home Assistant" flow, then confirm the child-scoping logic in `allowedLiveAreaIdsFor` behaves correctly once more than one room mapping exists.
 

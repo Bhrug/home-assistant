@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { areas, members, routines, type MemberId } from "@/data/household";
 import { MockHomeAssistantAdapter } from "@/lib/home-assistant/mock";
-import type { HomeEntity } from "@/lib/home-assistant/types";
+import { LiveHomeAssistantAdapter } from "@/lib/home-assistant/live-adapter";
+import type { HomeAssistantAdapter, HomeEntity } from "@/lib/home-assistant/types";
 
 type IconName = "home" | "grid" | "sparkles" | "headphones" | "moon" | "settings" | "bed" | "sofa" | "utensils" | "speaker" | "thermometer" | "play" | "pause" | "minus" | "plus" | "chevron" | "bell" | "sun" | "lock" | "leaf" | "more" | "volume" | "shield" | "mic";
 
@@ -39,7 +40,123 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-const adapter = new MockHomeAssistantAdapter();
+const mockAdapter = new MockHomeAssistantAdapter();
+
+const DISPLAYABLE_DOMAINS = new Set(["media_player", "climate", "light", "switch", "lock", "cover"]);
+const ICON_TINTS = ["lavender", "peach", "mint"] as const;
+
+interface LiveArea {
+  areaId: string;
+  name: string;
+}
+
+function RoomPicker({
+  memberId,
+  liveAreas,
+  onMapped,
+}: {
+  memberId: MemberId;
+  liveAreas: LiveArea[];
+  onMapped: (areaId: string) => void;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const choose = async (areaId: string) => {
+    setSaving(areaId);
+    try {
+      const response = await fetch("/api/home-assistant/room-mapping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId, areaId }),
+      });
+      if (response.ok) onMapped(areaId);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (liveAreas.length === 0) {
+    return (
+      <div className="emptyPersonalCard">
+        <span className="deviceIcon lavender"><Icon name="home"/></span>
+        <div><h3>No rooms found yet</h3><p>Add an area in Home Assistant, then come back to choose your room.</p></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="areaList">
+      {liveAreas.map((area) => (
+        <button key={area.areaId} className="areaRow" onClick={() => choose(area.areaId)} disabled={saving !== null}>
+          <span className="areaIcon"><Icon name="home"/></span>
+          <span><strong>{area.name}</strong><small>{saving === area.areaId ? "Saving…" : "Choose this as your room"}</small></span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GenericDeviceGrid({
+  entities: deviceEntities,
+  onChange,
+}: {
+  entities: HomeEntity[];
+  onChange: (entity: HomeEntity | undefined, state: string, attributes?: HomeEntity["attributes"]) => void;
+}) {
+  return (
+    <div className="deviceGrid">
+      {deviceEntities.map((entity, index) => {
+        const tint = ICON_TINTS[index % ICON_TINTS.length];
+
+        if (entity.domain === "media_player") {
+          const isPlaying = entity.state === "playing";
+          return (
+            <article className="deviceCard" key={entity.entityId}>
+              <div className="cardTop"><span className={`deviceIcon ${tint}`}><Icon name="speaker"/></span><span className={isPlaying ? "liveBadge" : "subtleBadge"}>{entity.state.toUpperCase()}</span></div>
+              <div><h3>{entity.name}</h3><p>{String(entity.attributes.media_title ?? entity.state)}</p></div>
+              <div className="cardControls">
+                <button className="roundControl primary" aria-label={isPlaying ? "Pause" : "Play"} onClick={() => onChange(entity, isPlaying ? "paused" : "playing")}>
+                  <Icon name={isPlaying ? "pause" : "play"}/>
+                </button>
+                <span className="controlLabel">Tap to {isPlaying ? "pause" : "play"}</span>
+              </div>
+            </article>
+          );
+        }
+
+        if (entity.domain === "climate") {
+          const target = Number(entity.attributes.temperature ?? 21);
+          return (
+            <article className="deviceCard" key={entity.entityId}>
+              <div className="cardTop"><span className={`deviceIcon ${tint}`}><Icon name="thermometer"/></span><span className="subtleBadge"><span className="heatDot"/> {entity.state.toUpperCase()}</span></div>
+              <div><h3>{entity.name}</h3><p>Room is {Number(entity.attributes.current_temperature ?? target)}°</p></div>
+              <div className="temperatureControl">
+                <button aria-label="Lower temperature" onClick={() => onChange(entity, entity.state, { temperature: target - 0.5 })}><Icon name="minus"/></button>
+                <div><strong>{target}°</strong><span>SET TO</span></div>
+                <button aria-label="Raise temperature" onClick={() => onChange(entity, entity.state, { temperature: target + 0.5 })}><Icon name="plus"/></button>
+              </div>
+            </article>
+          );
+        }
+
+        const isOn = ["on", "unlocked", "open"].includes(entity.state);
+        const nextState = entity.domain === "lock" ? (isOn ? "locked" : "unlocked") : entity.domain === "cover" ? (isOn ? "closed" : "open") : isOn ? "off" : "on";
+        return (
+          <article className="deviceCard" key={entity.entityId}>
+            <div className="cardTop"><span className={`deviceIcon ${tint}`}><Icon name={entity.domain === "lock" ? "lock" : "sun"}/></span><span className={isOn ? "liveBadge" : "subtleBadge"}>{entity.state.toUpperCase()}</span></div>
+            <div><h3>{entity.name}</h3><p>{entity.domain}</p></div>
+            <div className="cardControls">
+              <button className="roundControl primary" aria-label={`Toggle ${entity.name}`} onClick={() => onChange(entity, nextState)}>
+                <Icon name={isOn ? "pause" : "play"}/>
+              </button>
+              <span className="controlLabel">Tap to {isOn ? "turn off" : "turn on"}</span>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 
 export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initialMemberId?: MemberId; onSignOut?: () => void }) {
   const memberId = initialMemberId;
@@ -51,22 +168,69 @@ export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initial
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const member = members.find((item) => item.id === memberId) ?? members[0];
 
-  useEffect(() => adapter.subscribe(setEntities), []);
+  // null = still checking; false = confirmed not connected; true = live.
+  const [liveConnected, setLiveConnected] = useState<boolean | null>(null);
+  const [roomMappingInfo, setRoomMappingInfo] = useState<{ areas: LiveArea[]; mappedAreaId: string | null } | null>(null);
+
+  // initialMemberId never changes for the lifetime of a mounted
+  // HomeDashboard — switching people always signs out and remounts via
+  // LoginScreen — so this effect only ever runs once per sign-in.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/home-assistant/status?memberId=${memberId}`)
+      .then((res) => (res.ok ? res.json() : { connected: false }))
+      .then((data) => { if (!cancelled) setLiveConnected(Boolean(data.connected)); })
+      .catch(() => { if (!cancelled) setLiveConnected(false); });
+    return () => { cancelled = true; };
+  }, [memberId]);
+
+  useEffect(() => {
+    if (!liveConnected) return;
+    let cancelled = false;
+    fetch(`/api/home-assistant/room-mapping?memberId=${memberId}`)
+      .then((res) => (res.ok ? res.json() : { areas: [], mappedAreaId: null }))
+      .then((data) => { if (!cancelled) setRoomMappingInfo({ areas: data.areas ?? [], mappedAreaId: data.mappedAreaId ?? null }); })
+      .catch(() => { if (!cancelled) setRoomMappingInfo({ areas: [], mappedAreaId: null }); });
+    return () => { cancelled = true; };
+  }, [liveConnected, memberId]);
+
+  const adapter: HomeAssistantAdapter = useMemo(
+    () => (liveConnected ? new LiveHomeAssistantAdapter(memberId) : mockAdapter),
+    [liveConnected, memberId]
+  );
+
+  useEffect(() => {
+    if (liveConnected === null) return;
+    return adapter.subscribe(setEntities);
+  }, [adapter, liveConnected]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2400);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const roomEntities = useMemo(() => entities.filter((entity) => entity.areaId === "yuvi-bedroom"), [entities]);
+  const myAreaId = liveConnected ? roomMappingInfo?.mappedAreaId ?? null : member.primaryArea;
+  const roomEntities = useMemo(() => (myAreaId ? entities.filter((entity) => entity.areaId === myAreaId) : []), [entities, myAreaId]);
   const primaryArea = areas.find((area) => area.id === member.primaryArea);
+  const myAreaName = liveConnected ? roomMappingInfo?.areas.find((area) => area.areaId === myAreaId)?.name : primaryArea?.name;
   const alexa = roomEntities.find((entity) => entity.entityId.includes("echo"));
   const sonos = roomEntities.find((entity) => entity.entityId.includes("sonos"));
   const heating = roomEntities.find((entity) => entity.domain === "climate");
+  const hasYuviCards = member.id === "yuvi" && Boolean(alexa || sonos || heating);
+  const needsRoomMapping = Boolean(liveConnected) && roomMappingInfo !== null && !roomMappingInfo.mappedAreaId;
+  const displayableEntities = useMemo(
+    () => roomEntities.filter((entity) => DISPLAYABLE_DOMAINS.has(entity.domain) && entity.canControl),
+    [roomEntities]
+  );
 
   const changeEntity = (entity: HomeEntity | undefined, state: string, attributes: HomeEntity["attributes"] = {}) => {
     if (!entity) return;
     void adapter.setState(entity.entityId, state, attributes);
+  };
+
+  const startHomeAssistantConnect = (id: MemberId) => {
+    window.location.href = `/api/home-assistant/auth/start?memberId=${id}`;
   };
 
   // Switching to a different person always goes back through the login
@@ -184,8 +348,8 @@ export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initial
           </section>
 
           <section className="sectionBlock">
-            <div className="sectionHeading"><div><p className="eyebrow">YOUR SPACE</p><h2>{member.id === "yuvi" ? "Yuvi’s room" : primaryArea?.name}</h2></div><button className="textButton" onClick={() => setToast("Room detail view coming next")}>View room <Icon name="chevron" size={16}/></button></div>
-            {member.id === "yuvi" ? (
+            <div className="sectionHeading"><div><p className="eyebrow">YOUR SPACE</p><h2>{hasYuviCards ? "Yuvi’s room" : (myAreaName ?? primaryArea?.name)}</h2></div><button className="textButton" onClick={() => setToast("Room detail view coming next")}>View room <Icon name="chevron" size={16}/></button></div>
+            {hasYuviCards ? (
               <div className="deviceGrid">
                 <article className="deviceCard alexaCard">
                   <div className="cardTop"><span className="deviceIcon lavender"><Icon name="speaker"/></span><span className={alexa?.state === "playing" ? "liveBadge" : "subtleBadge"}>{alexa?.state === "playing" ? "PLAYING" : "READY"}</span></div>
@@ -195,7 +359,7 @@ export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initial
 
                 <article className="deviceCard sonosCard">
                   <div className="cardTop"><span className="deviceIcon peach"><Icon name="speaker"/></span><button className="moreButton" aria-label="Sonos options" onClick={() => setToast("Sonos options coming next")}><Icon name="more"/></button></div>
-                  <div><h3>Sonos</h3><p className="trackTitle">{String(sonos?.attributes.title ?? "Nothing playing")}</p><p>{String(sonos?.attributes.artist ?? "Yuvi’s speaker")}</p></div>
+                  <div><h3>Sonos</h3><p className="trackTitle">{String(sonos?.attributes.title ?? sonos?.attributes.media_title ?? "Nothing playing")}</p><p>{String(sonos?.attributes.artist ?? sonos?.attributes.media_artist ?? "Yuvi’s speaker")}</p></div>
                   <div className="volumeRow"><button aria-label="Lower volume" onClick={() => changeEntity(sonos, sonos?.state ?? "idle", { volume: Math.max(0, Number(sonos?.attributes.volume ?? 0) - 5) })}><Icon name="minus" size={17}/></button><div className="volumeTrack"><span style={{ width: `${Number(sonos?.attributes.volume ?? 0)}%` }}/></div><strong>{Number(sonos?.attributes.volume ?? 0)}%</strong><button aria-label="Raise volume" onClick={() => changeEntity(sonos, sonos?.state ?? "idle", { volume: Math.min(100, Number(sonos?.attributes.volume ?? 0) + 5) })}><Icon name="plus" size={17}/></button></div>
                 </article>
 
@@ -205,8 +369,29 @@ export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initial
                   <div className="temperatureControl"><button aria-label="Lower temperature" onClick={() => changeEntity(heating, "heat", { temperature: Math.max(16, Number(heating?.attributes.temperature ?? 21) - 0.5) })}><Icon name="minus"/></button><div><strong>{Number(heating?.attributes.temperature ?? 21)}°</strong><span>SET TO</span></div><button aria-label="Raise temperature" onClick={() => changeEntity(heating, "heat", { temperature: Math.min(24, Number(heating?.attributes.temperature ?? 21) + 0.5) })}><Icon name="plus"/></button></div>
                 </article>
               </div>
+            ) : needsRoomMapping ? (
+              <RoomPicker
+                memberId={member.id}
+                liveAreas={roomMappingInfo?.areas ?? []}
+                onMapped={(areaId) => setRoomMappingInfo((prev) => (prev ? { ...prev, mappedAreaId: areaId } : prev))}
+              />
+            ) : liveConnected && displayableEntities.length > 0 ? (
+              <GenericDeviceGrid entities={displayableEntities} onChange={changeEntity} />
+            ) : liveConnected ? (
+              <div className="emptyPersonalCard">
+                <span className="deviceIcon lavender"><Icon name="home"/></span>
+                <div><h3>{myAreaName ?? "This room"} is ready</h3><p>No controllable devices found in this room yet — add some in Home Assistant.</p></div>
+              </div>
             ) : (
-              <div className="emptyPersonalCard"><span className="deviceIcon lavender"><Icon name="home"/></span><div><h3>{primaryArea?.name} is ready</h3><p>This profile demonstrates household switching. We’ll map this person’s real devices next.</p></div><button onClick={() => selectMember("yuvi")}>Return to prototype</button></div>
+              <div className="emptyPersonalCard">
+                <span className="deviceIcon lavender"><Icon name="home"/></span>
+                <div><h3>{primaryArea?.name} is ready</h3><p>This profile demonstrates household switching. We’ll map this person’s real devices next.</p></div>
+                {liveConnected === false ? (
+                  <button onClick={() => startHomeAssistantConnect(member.id)}>Connect Home Assistant</button>
+                ) : (
+                  <button onClick={() => selectMember("yuvi")}>Return to prototype</button>
+                )}
+              </div>
             )}
           </section>
 
@@ -226,7 +411,14 @@ export function HomeDashboard({ initialMemberId = "yuvi", onSignOut }: { initial
             </div>
           </section>
 
-          <footer className="homeFooter"><span><Icon name="shield" size={16}/> Connected securely to Home Assistant</span><span><Icon name="leaf" size={16}/> Home energy is looking good</span></footer>
+          <footer className="homeFooter">
+            {liveConnected ? (
+              <span><Icon name="shield" size={16}/> Connected securely to Home Assistant</span>
+            ) : (
+              <button className="textButton" onClick={() => startHomeAssistantConnect(member.id)}><Icon name="shield" size={16}/> Connect to Home Assistant</button>
+            )}
+            <span><Icon name="leaf" size={16}/> Home energy is looking good</span>
+          </footer>
         </div>
       </main>
 

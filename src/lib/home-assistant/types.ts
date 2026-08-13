@@ -1,4 +1,8 @@
-export type EntityDomain = "media_player" | "climate" | "light" | "sensor";
+// Real Home Assistant instances expose many more domains than the mock
+// data ever needed (person, sun, zone, automation, ...), so this stays a
+// plain string rather than a closed union. src/components/home-dashboard.tsx
+// only renders cards for a known controllable subset.
+export type EntityDomain = string;
 
 export interface HomeEntity {
   entityId: string;
@@ -7,7 +11,7 @@ export interface HomeEntity {
   domain: EntityDomain;
   name: string;
   state: string;
-  attributes: Record<string, string | number | boolean | string[]>;
+  attributes: Record<string, unknown>;
   canControl: boolean;
 }
 
