@@ -106,6 +106,13 @@ Each household member authenticates to Home Assistant with **their own HA user a
 - Generic device grid: any connected member now sees real, controllable devices in their mapped room (not just Yuvi) — `GenericDeviceGrid` in `home-dashboard.tsx`, rendered for `media_player`/`climate`/`light`/`switch`/`lock`/`cover` domains
 - **Verified live against Bhrug's real instance**: OAuth round-trip, 93 real entities returned (including the always-present `sun.sun`/`person.*`/`zone.home`), room mapping saved and reflected in the UI, a real Sonos `switch` service call executed successfully, SSE push confirmed, and tokens survive a dev-server restart with no re-auth
 
+### PIN storage and reset (new)
+
+- PINs are no longer in client-side code. They are salted-scrypt hashed in gitignored `.data/pins.json` and verified server-side (`src/lib/auth/pins.ts`, `POST /api/auth/login`). Until a member's PIN is reset once, a placeholder default from `pins.ts` applies — those defaults are committed, so each person should reset theirs.
+- Failed attempts are throttled per member (5 failures locks that member for 60s); a successful reset clears the lock.
+- "Forgot PIN?" on the login screen: an adult or the owner approves with their own PIN, then sets a new 4-digit PIN for whoever forgot (`POST /api/auth/reset-pin`). Children cannot approve resets.
+- Known limitation: sign-in is still client state with no session cookie, and the other API routes trust the `memberId` they are sent. The PIN check is now real, but it does not yet gate those routes.
+
 ## Verification status
 
 - `npm run lint` — passing

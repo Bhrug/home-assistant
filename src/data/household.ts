@@ -10,7 +10,6 @@ export interface HouseholdMember {
   greeting: string;
   accent: string;
   avatarClass: string;
-  pin: string;
 }
 
 export interface Area {
@@ -22,15 +21,13 @@ export interface Area {
   activeDevices: number;
 }
 
-// Placeholder PINs — change these before real use. This is a lightweight
-// deterrent against casual profile-switching, not real security: it lives
-// in client-side JS and is not a substitute for Home Assistant's own
-// per-user authentication once the real adapter is connected.
+// PINs are not stored here: they are hashed and verified server-side (see
+// src/lib/auth/pins.ts) so they never ship to the browser.
 export const members: HouseholdMember[] = [
-  { id: "yuvi", name: "Yuvi", initials: "Y", role: "child", primaryArea: "yuvi-bedroom", greeting: "Your room is cosy and everything looks good.", accent: "#6c63e8", avatarClass: "avatarYuvi", pin: "1111" },
-  { id: "you", name: "Bhrug", initials: "B", role: "owner", primaryArea: "main-bedroom", greeting: "The house is settled and running smoothly.", accent: "#28756b", avatarClass: "avatarYou", pin: "4444" },
-  { id: "lops", name: "Lops", initials: "L", role: "adult", primaryArea: "main-bedroom", greeting: "Everything at home is just where you left it.", accent: "#b45f75", avatarClass: "avatarLops", pin: "3333" },
-  { id: "anni", name: "Anni", initials: "A", role: "child", primaryArea: "anni-bedroom", greeting: "Your space is ready for you.", accent: "#d37942", avatarClass: "avatarAnni", pin: "2222" },
+  { id: "yuvi", name: "Yuvi", initials: "Y", role: "child", primaryArea: "yuvi-bedroom", greeting: "Your room is cosy and everything looks good.", accent: "#6c63e8", avatarClass: "avatarYuvi" },
+  { id: "you", name: "Bhrug", initials: "B", role: "owner", primaryArea: "main-bedroom", greeting: "The house is settled and running smoothly.", accent: "#28756b", avatarClass: "avatarYou" },
+  { id: "lops", name: "Lops", initials: "L", role: "adult", primaryArea: "main-bedroom", greeting: "Everything at home is just where you left it.", accent: "#b45f75", avatarClass: "avatarLops" },
+  { id: "anni", name: "Anni", initials: "A", role: "child", primaryArea: "anni-bedroom", greeting: "Your space is ready for you.", accent: "#d37942", avatarClass: "avatarAnni" },
 ];
 
 export const areas: Area[] = [
